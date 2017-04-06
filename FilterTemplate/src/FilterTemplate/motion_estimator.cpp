@@ -57,8 +57,8 @@ void MotionEstimator::Estimate(const uint8_t* cur_Y,
 	const uint8_t* prev_Y_left,
 	const uint8_t* prev_Y_upleft,
 	MV* mvectors) {
-	FullSearch(cur_Y, prev_Y, prev_Y_up, prev_Y_left, prev_Y_upleft, mvectors);
-	//ARPS(cur_Y, prev_Y, prev_Y_up, prev_Y_left, prev_Y_upleft, mvectors);
+	//FullSearch(cur_Y, prev_Y, prev_Y_up, prev_Y_left, prev_Y_upleft, mvectors);
+	ARPS(cur_Y, prev_Y, prev_Y_up, prev_Y_left, prev_Y_upleft, mvectors);
 }
 
 void MotionEstimator::FullSearch(const uint8_t* cur_Y,
@@ -168,22 +168,11 @@ constexpr int cache_width = 64;
 constexpr int cache_size = cache_width*cache_width;
 constexpr int cache_offset = (cache_width - 1) / 2;
 
-inline void SetCachedSAD_16x16(MV& mv, const uint8_t *block1, const uint8_t *block2, const int stride, bool cache[], const uint8_t *prev_Y, const int img_size) {
+inline void SetCachedSAD_16x16(MV& mv, const uint8_t *block1, const uint8_t *block2, const int stride, const uint8_t *prev_Y, const int img_size) {
 	if (block2 < prev_Y || block2 > prev_Y + img_size) {
 		mv.error = std::numeric_limits<long>::max();
 		return;
 	}
-	/*if (std::max(abs(mv.x), abs(mv.y)) <= cache_offset) {
-	const auto idx = mv.y * cache_width + mv.x;
-	if (cache[idx]) {
-	mv.error = std::numeric_limits<long>::max();
-	}
-	else {
-	mv.error = GetErrorSAD_16x16(block1, block2, stride);
-	cache[idx] = true;
-	}
-	return;
-	}*/
 	mv.error = GetErrorSAD_16x16(block1, block2, stride);
 	return;
 }
@@ -193,13 +182,10 @@ void MotionEstimator::ARPS(const uint8_t* cur_Y,
 	const uint8_t* prev_Y_up,
 	const uint8_t* prev_Y_left,
 	const uint8_t* prev_Y_upleft,
-	MV* mvectors) {
+	MV* mvectors) 
+{
 	// Uses MV of the left block as estimation
 	MV predicted;
-
-	// SAD cache -- not used
-	//bool cache_mem[cache_size];
-	//bool *cache = (cache_mem + (cache_width + 1) * cache_offset);
 
 	for (int i = 0; i < num_blocks_vert; ++i) {
 		for (int j = 0; j < num_blocks_hor; ++j) {
@@ -219,7 +205,7 @@ void MotionEstimator::ARPS(const uint8_t* cur_Y,
 			//memset(cache_mem, 0, cache_size); -- note turn on if using cache
 
 			// ZMP
-			SetCachedSAD_16x16(current, cur, comp, width_ext, cache, prev_Y, img_size);
+			SetCachedSAD_16x16(current, cur, comp, width_ext, prev_Y, img_size);
 			update_best(best, current);
 			try_early_exit(zmp_threshold);
 
@@ -234,29 +220,29 @@ void MotionEstimator::ARPS(const uint8_t* cur_Y,
 				// 1
 				current.x = -arm_length;
 				comp = prev - arm_length;
-				SetCachedSAD_16x16(current, cur, comp, width_ext, cache, prev_Y, img_size);
+				SetCachedSAD_16x16(current, cur, comp, width_ext, prev_Y, img_size);
 				update_best(best, current);
 				// 2
 				current.x = arm_length;
 				comp = prev + arm_length;
-				SetCachedSAD_16x16(current, cur, comp, width_ext, cache, prev_Y, img_size);
+				SetCachedSAD_16x16(current, cur, comp, width_ext, prev_Y, img_size);
 				update_best(best, current);
 				// 3
 				current.x = 0;
 				current.y = -arm_length;
 				comp = prev - arm_length * width_ext;
-				SetCachedSAD_16x16(current, cur, comp, width_ext, cache, prev_Y, img_size);
+				SetCachedSAD_16x16(current, cur, comp, width_ext, prev_Y, img_size);
 				update_best(best, current);
 				// 4
 				current.y = arm_length;
 				comp = prev + arm_length * width_ext;
-				SetCachedSAD_16x16(current, cur, comp, width_ext, cache, prev_Y, img_size);
+				SetCachedSAD_16x16(current, cur, comp, width_ext, prev_Y, img_size);
 				update_best(best, current);
 
 				// also search predicted MV
 				if (predicted.x != 0 && predicted.y != 0) {
 					const auto comp = prev + predicted.y * width_ext + predicted.x;
-					SetCachedSAD_16x16(predicted, cur, comp, width_ext, cache, prev_Y, img_size); // fixme
+					SetCachedSAD_16x16(predicted, cur, comp, width_ext, prev_Y, img_size); // fixme
 					update_best(best, predicted);
 				}
 			}
@@ -270,23 +256,23 @@ void MotionEstimator::ARPS(const uint8_t* cur_Y,
 				// 1
 				current.x -= 1;
 				comp = base - 1;
-				SetCachedSAD_16x16(current, cur, comp, width_ext, cache, prev_Y, img_size);
+				SetCachedSAD_16x16(current, cur, comp, width_ext, prev_Y, img_size);
 				update_best(best, current);
 				// 2
 				current.x += 2;
 				comp = base + 1;
-				SetCachedSAD_16x16(current, cur, comp, width_ext, cache, prev_Y, img_size);
+				SetCachedSAD_16x16(current, cur, comp, width_ext, prev_Y, img_size);
 				update_best(best, current);
 				// 3
 				current.x -= 1;
 				current.y -= 1;
 				comp = base - width_ext;
-				SetCachedSAD_16x16(current, cur, comp, width_ext, cache, prev_Y, img_size);
+				SetCachedSAD_16x16(current, cur, comp, width_ext, prev_Y, img_size);
 				update_best(best, current);
 				// 4
 				current.y += 2;
 				comp = base + width_ext;
-				SetCachedSAD_16x16(current, cur, comp, width_ext, cache, prev_Y, img_size);
+				SetCachedSAD_16x16(current, cur, comp, width_ext, prev_Y, img_size);
 				update_best(best, current);
 				current.y -= 1;
 			} while (!(best.error < first_threshold) && (current.x != best.x || current.y != best.y));
@@ -297,25 +283,25 @@ void MotionEstimator::ARPS(const uint8_t* cur_Y,
 				// 1
 				current.shift_dir = ShiftDir::LEFT;
 				comp = prev_Y_left + ofs;
-				SetCachedSAD_16x16(current, cur, comp, width_ext, cache, prev_Y_left, img_size);
+				SetCachedSAD_16x16(current, cur, comp, width_ext, prev_Y_left, img_size);
 				update_best(best, current);
 				// 2
 				current.shift_dir = ShiftDir::LEFT;
 				current.x += 1;
 				comp = prev_Y_left + ofs + 1;
-				SetCachedSAD_16x16(current, cur, comp, width_ext, cache, prev_Y_left, img_size);
+				SetCachedSAD_16x16(current, cur, comp, width_ext, prev_Y_left, img_size);
 				update_best(best, current);
 				current.x -= 1;
 				// 3
 				current.shift_dir = ShiftDir::UP;
 				comp = prev_Y_up + ofs;
-				SetCachedSAD_16x16(current, cur, comp, width_ext, cache, prev_Y_up, img_size);
+				SetCachedSAD_16x16(current, cur, comp, width_ext, prev_Y_up, img_size);
 				update_best(best, current);
 				// 4
 				current.shift_dir = ShiftDir::UP;
 				current.y += 1;
 				comp = prev_Y_up + ofs + width_ext;
-				SetCachedSAD_16x16(current, cur, comp, width_ext, cache, prev_Y_up, img_size);
+				SetCachedSAD_16x16(current, cur, comp, width_ext, prev_Y_up, img_size);
 				update_best(best, current);
 				current.y -= 1;
 
@@ -324,13 +310,13 @@ void MotionEstimator::ARPS(const uint8_t* cur_Y,
 					// 1
 					current.shift_dir = ShiftDir::UPLEFT;
 					comp = prev_Y_upleft + ofs;
-					SetCachedSAD_16x16(current, cur, comp, width_ext, cache, prev_Y_upleft, img_size);
+					SetCachedSAD_16x16(current, cur, comp, width_ext, prev_Y_upleft, img_size);
 					update_best(best, current);
 					// 2
 					current.shift_dir = ShiftDir::UPLEFT;
 					current.x += 1;
 					comp = prev_Y_upleft + ofs + 1;
-					SetCachedSAD_16x16(current, cur, comp, width_ext, cache, prev_Y_upleft, img_size);
+					SetCachedSAD_16x16(current, cur, comp, width_ext, prev_Y_upleft, img_size);
 					update_best(best, current);
 
 				}
@@ -340,13 +326,13 @@ void MotionEstimator::ARPS(const uint8_t* cur_Y,
 					// 3
 					current.shift_dir = ShiftDir::UPLEFT;
 					comp = prev_Y_upleft + ofs;
-					SetCachedSAD_16x16(current, cur, comp, width_ext, cache, prev_Y_upleft, img_size);
+					SetCachedSAD_16x16(current, cur, comp, width_ext, prev_Y_upleft, img_size);
 					update_best(best, current);
 					// 4
 					current.shift_dir = ShiftDir::UPLEFT;
 					current.y += 1;
 					comp = prev_Y_upleft + ofs + width_ext;
-					SetCachedSAD_16x16(current, cur, comp, width_ext, cache, prev_Y_upleft, img_size);
+					SetCachedSAD_16x16(current, cur, comp, width_ext, prev_Y_upleft, img_size);
 					update_best(best, current);
 				}
 
