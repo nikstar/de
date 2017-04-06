@@ -3,6 +3,7 @@
 #include <cstdint>
 #include "mv.hpp"
 #include "mat.h"
+#include "metric.hpp"
 
 constexpr const char FILTER_NAME[] = "DE_Starshinov";
 constexpr const char FILTER_AUTHOR[] = "Nikita Starshinov";
@@ -80,4 +81,31 @@ private:
 
 	/// Position of the first pixel of the frame in the extended frame
 	const int first_row_offset;
+
+	// Custom data
+	int zmp_threshold, first_threshold, second_threshold;
+	int img_size;
+
+	// ME methods
+	void FullSearch(const uint8_t* cur_Y,
+		const uint8_t* prev_Y,
+		const uint8_t* prev_Y_up,
+		const uint8_t* prev_Y_left,
+		const uint8_t* prev_Y_upleft,
+		MV* mvectors);
+	void ARPS(const uint8_t* cur_Y,
+		const uint8_t* prev_Y,
+		const uint8_t* prev_Y_up,
+		const uint8_t* prev_Y_left,
+		const uint8_t* prev_Y_upleft,
+		MV* mvectors);
+
+	inline void SetCachedSAD_16x16(MV& mv, const uint8_t *block1, const uint8_t *block2, const int stride, const uint8_t *prev_Y) {
+		if (block2 < prev_Y + first_row_offset || block2 > prev_Y + first_row_offset + img_size) {
+			mv.error = std::numeric_limits<long>::max();
+			return;
+		}
+		mv.error = GetErrorSAD_16x16(block1, block2, stride);
+		return;
+	}
 };
