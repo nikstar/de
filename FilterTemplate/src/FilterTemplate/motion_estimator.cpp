@@ -2,6 +2,8 @@
 
 #include "metric.hpp"
 #include "motion_estimator.hpp"
+#include "mat.h"
+
 MotionEstimator::MotionEstimator(int width, int height, uint8_t quality, bool use_half_pixel)
 	: width(width)
 	, height(height)
@@ -123,7 +125,7 @@ void MotionEstimator::FullSearch(const uint8_t* cur_Y,
 						for (int y = -BORDER; y <= BORDER; ++y) {
 							for (int x = -BORDER; x <= BORDER; ++x) {
 								const auto comp = prev + y * width_ext + x;
-								const auto error = GetErrorSAD_16x16(cur, comp, width_ext);
+								const auto error = GetErrorSAD_8x8(cur, comp, width_ext);
 
 								if (error < subvector.error) {
 									subvector.x = x;
@@ -196,8 +198,8 @@ void MotionEstimator::ARPS(const uint8_t* cur_Y,
 	MV predicted;
 
 	// SAD cache -- not used
-	bool cache_mem[cache_size];
-	bool *cache = (cache_mem + (cache_width + 1) * cache_offset);
+	//bool cache_mem[cache_size];
+	//bool *cache = (cache_mem + (cache_width + 1) * cache_offset);
 
 	for (int i = 0; i < num_blocks_vert; ++i) {
 		for (int j = 0; j < num_blocks_hor; ++j) {
