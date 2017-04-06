@@ -2,6 +2,7 @@
 
 #include <cstdint>
 #include "mv.hpp"
+#include "mat.h"
 
 constexpr const char FILTER_NAME[] = "DE_Starshinov";
 constexpr const char FILTER_AUTHOR[] = "Nikita Starshinov";
