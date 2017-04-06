@@ -3,8 +3,8 @@
 #include <cstdint>
 #include "mv.hpp"
 
-constexpr const char FILTER_NAME[] = "DE_your_surname";
-constexpr const char FILTER_AUTHOR[] = "PUT YOUR NAME HERE";
+constexpr const char FILTER_NAME[] = "DE_Starshinov";
+constexpr const char FILTER_AUTHOR[] = "Nikita Starshinov";
 
 class MotionEstimator {
 public:

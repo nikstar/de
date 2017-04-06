@@ -20,16 +20,10 @@ VirtualDub.video.SetFrameRate2(0,0,1);
 VirtualDub.video.SetIVTC(0, 0, 0, 0);
 VirtualDub.video.SetCompression();
 VirtualDub.video.filters.Clear();
-VirtualDub.video.filters.Add("DE_your_surname");
+VirtualDub.video.filters.Add("DE_Starshinov");
 
-VirtualDub.video.filters.instance[0].Config(4, 0, 0, 0, 20, 1);
-VirtualDub.SaveAVI("depth-20.avi");
 VirtualDub.video.filters.instance[0].Config(4, 0, 0, 0, 40, 1);
 VirtualDub.SaveAVI("depth-40.avi");
-VirtualDub.video.filters.instance[0].Config(4, 0, 0, 0, 60, 1);
-VirtualDub.SaveAVI("depth-60.avi");
-VirtualDub.video.filters.instance[0].Config(4, 0, 0, 0, 80, 1);
-VirtualDub.SaveAVI("depth-80.avi");
 VirtualDub.video.filters.instance[0].Config(4, 0, 0, 0, 100, 1);
 VirtualDub.SaveAVI("depth-100.avi");
 
