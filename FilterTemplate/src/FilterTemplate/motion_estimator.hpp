@@ -80,4 +80,22 @@ private:
 
 	/// Position of the first pixel of the frame in the extended frame
 	const int first_row_offset;
+
+	// Custom data
+	int zmp_threshold, first_threshold, second_threshold;
+	int img_size;
+
+	// ME methods
+	void FullSearch(const uint8_t* cur_Y,
+		const uint8_t* prev_Y,
+		const uint8_t* prev_Y_up,
+		const uint8_t* prev_Y_left,
+		const uint8_t* prev_Y_upleft,
+		MV* mvectors);
+	void ARPS(const uint8_t* cur_Y,
+		const uint8_t* prev_Y,
+		const uint8_t* prev_Y_up,
+		const uint8_t* prev_Y_left,
+		const uint8_t* prev_Y_upleft,
+		MV* mvectors);
 };
