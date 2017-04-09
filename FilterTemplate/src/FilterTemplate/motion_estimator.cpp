@@ -75,7 +75,6 @@ void SafeSAD_16x16(MV& mv, const uint8_t *block1, const uint8_t *block2, const i
 		return;
 	}
 	mv.error = GetErrorSAD_16x16(block1, block2, stride);
-	return;
 }
 
 void SafeSAD_8x8(MV& mv, const uint8_t *block1, const uint8_t *block2, const int stride, const uint8_t *prev_Y, const int first_row_offset, const int img_size) {
@@ -84,8 +83,20 @@ void SafeSAD_8x8(MV& mv, const uint8_t *block1, const uint8_t *block2, const int
 		return;
 	}
 	mv.error = GetErrorSAD_8x8(block1, block2, stride);
-	return;
 }
+
+void SafeSAD_4x4(MV& mv, const uint8_t *block1, const uint8_t *block2, const int stride, const uint8_t *prev_Y, const int first_row_offset, const int img_size) {
+	auto shifted1 = block1 - 2 * stride - 2;
+	auto shifted2 = block2 - 2 * stride - 2;
+	
+	if (shifted2 < prev_Y + first_row_offset || shifted2 > prev_Y + first_row_offset + img_size) {
+		mv.error = std::numeric_limits<long>::max();
+		return;
+	}
+	
+	mv.error = GetErrorSAD_8x8(shifted1, shifted2, stride);
+}
+
 
 inline void update(MV& best, const MV& mv) {
 	if (mv.error < best.error) {
@@ -94,13 +105,13 @@ inline void update(MV& best, const MV& mv) {
 }
 
 
-template <void(*SafeSAD_8x8)(MV&, const uint8_t *, const uint8_t *, const int, const uint8_t *, const int, const int)>
+template <void(*SAD)(MV&, const uint8_t *, const uint8_t *, const int, const uint8_t *, const int, const int)>
 void MotionEstimator::EstimateAtLevel(bool at_edge, const uint8_t *prev_Y, const uint8_t *cur, const uint8_t *prev, MV& predicted, MV& best) {
 	auto comp = prev;
 	MV current;
 
 	// check center (ZMP)
-	SafeSAD_8x8(current, cur, comp, width_ext, prev_Y, first_row_offset, img_size);
+	SAD(current, cur, comp, width_ext, prev_Y, first_row_offset, img_size);
 	update(best, current);
 
 	if (best.error < zmp_threshold) {
@@ -118,29 +129,29 @@ void MotionEstimator::EstimateAtLevel(bool at_edge, const uint8_t *prev_Y, const
 		// 1
 		current.x = -arm_length;
 		comp = prev - arm_length;
-		SafeSAD_8x8(current, cur, comp, width_ext, prev_Y, first_row_offset, img_size);
+		SAD(current, cur, comp, width_ext, prev_Y, first_row_offset, img_size);
 		update(best, current);
 		// 2
 		current.x = arm_length;
 		comp = prev + arm_length;
-		SafeSAD_8x8(current, cur, comp, width_ext, prev_Y, first_row_offset, img_size);
+		SAD(current, cur, comp, width_ext, prev_Y, first_row_offset, img_size);
 		update(best, current);
 		// 3
 		current.x = 0;
 		current.y = -arm_length;
 		comp = prev - arm_length * width_ext;
-		SafeSAD_8x8(current, cur, comp, width_ext, prev_Y, first_row_offset, img_size);
+		SAD(current, cur, comp, width_ext, prev_Y, first_row_offset, img_size);
 		update(best, current);
 		// 4
 		current.y = arm_length;
 		comp = prev + arm_length * width_ext;
-		SafeSAD_8x8(current, cur, comp, width_ext, prev_Y, first_row_offset, img_size);
+		SAD(current, cur, comp, width_ext, prev_Y, first_row_offset, img_size);
 		update(best, current);
 
 		// also search predicted MV
 		if (!at_edge && predicted.x != 0 && predicted.y != 0) {
 			const auto comp = prev + predicted.y * width_ext + predicted.x;
-			SafeSAD_8x8(predicted, cur, comp, width_ext, prev_Y, first_row_offset, img_size); // fixme
+			SAD(predicted, cur, comp, width_ext, prev_Y, first_row_offset, img_size); // fixme
 			update(best, predicted);
 		}
 	}
@@ -156,23 +167,23 @@ void MotionEstimator::EstimateAtLevel(bool at_edge, const uint8_t *prev_Y, const
 		// 1
 		current.x -= 1;
 		comp = base - 1;
-		SafeSAD_8x8(current, cur, comp, width_ext, prev_Y, first_row_offset, img_size);
+		SAD(current, cur, comp, width_ext, prev_Y, first_row_offset, img_size);
 		update(best, current);
 		// 2
 		current.x += 2;
 		comp = base + 1;
-		SafeSAD_8x8(current, cur, comp, width_ext, prev_Y, first_row_offset, img_size);
+		SAD(current, cur, comp, width_ext, prev_Y, first_row_offset, img_size);
 		update(best, current);
 		// 3
 		current.x -= 1;
 		current.y -= 1;
 		comp = base - width_ext;
-		SafeSAD_8x8(current, cur, comp, width_ext, prev_Y, first_row_offset, img_size);
+		SAD(current, cur, comp, width_ext, prev_Y, first_row_offset, img_size);
 		update(best, current);
 		// 4
 		current.y += 2;
 		comp = base + width_ext;
-		SafeSAD_8x8(current, cur, comp, width_ext, prev_Y, first_row_offset, img_size);
+		SAD(current, cur, comp, width_ext, prev_Y, first_row_offset, img_size);
 		update(best, current);
 		current.y -= 1;
 	} while (!(best.error < first_threshold) && (current.x != best.x || current.y != best.y));
@@ -183,25 +194,25 @@ void MotionEstimator::EstimateAtLevel(bool at_edge, const uint8_t *prev_Y, const
 		// 1
 		current.shift_dir = ShiftDir::LEFT;
 		comp = prev_Y_left + ofs;
-		SafeSAD_8x8(current, cur, comp, width_ext, prev_Y_left);
+		SAD(current, cur, comp, width_ext, prev_Y_left);
 		update(best, current);
 		// 2
 		current.shift_dir = ShiftDir::LEFT;
 		current.x += 1;
 		comp = prev_Y_left + ofs + 1;
-		SafeSAD_8x8(current, cur, comp, width_ext, prev_Y_left);
+		SAD(current, cur, comp, width_ext, prev_Y_left);
 		update(best, current);
 		current.x -= 1;
 		// 3
 		current.shift_dir = ShiftDir::UP;
 		comp = prev_Y_up + ofs;
-		SafeSAD_8x8(current, cur, comp, width_ext, prev_Y_up);
+		SAD(current, cur, comp, width_ext, prev_Y_up);
 		update(best, current);
 		// 4
 		current.shift_dir = ShiftDir::UP;
 		current.y += 1;
 		comp = prev_Y_up + ofs + width_ext;
-		SafeSAD_8x8(current, cur, comp, width_ext, prev_Y_up);
+		SAD(current, cur, comp, width_ext, prev_Y_up);
 		update(best, current);
 		current.y -= 1;
 
@@ -210,13 +221,13 @@ void MotionEstimator::EstimateAtLevel(bool at_edge, const uint8_t *prev_Y, const
 			// 1
 			current.shift_dir = ShiftDir::UPLEFT;
 			comp = prev_Y_upleft + ofs;
-			SafeSAD_8x8(current, cur, comp, width_ext, prev_Y_upleft);
+			SAD(current, cur, comp, width_ext, prev_Y_upleft);
 			update(best, current);
 			// 2
 			current.shift_dir = ShiftDir::UPLEFT;
 			current.x += 1;
 			comp = prev_Y_upleft + ofs + 1;
-			SafeSAD_8x8(current, cur, comp, width_ext, prev_Y_upleft);
+			SAD(current, cur, comp, width_ext, prev_Y_upleft);
 			update(best, current);
 
 		}
@@ -226,13 +237,13 @@ void MotionEstimator::EstimateAtLevel(bool at_edge, const uint8_t *prev_Y, const
 			// 3
 			current.shift_dir = ShiftDir::UPLEFT;
 			comp = prev_Y_upleft + ofs;
-			SafeSAD_8x8(current, cur, comp, width_ext, prev_Y_upleft);
+			SAD(current, cur, comp, width_ext, prev_Y_upleft);
 			update(best, current);
 			// 4
 			current.shift_dir = ShiftDir::UPLEFT;
 			current.y += 1;
 			comp = prev_Y_upleft + ofs + width_ext;
-			SafeSAD_8x8(current, cur, comp, width_ext, prev_Y_upleft);
+			SAD(current, cur, comp, width_ext, prev_Y_upleft);
 			update(best, current);
 		}
 	}*/
@@ -252,12 +263,12 @@ void MotionEstimator::ARPS(const uint8_t* cur_Y,
 		for (int j = 0; j < num_blocks_hor; ++j) {
 			const auto block_id = i * num_blocks_hor + j;
 				
-			MV best_vector;
-			best_vector.Split(); // always split for 8x8
+			MV best16;
+			best16.Split(); // always split for 8x8
 			
 			for (int h = 0; h < 4; ++h) {
-				auto& best = best_vector.SubVector(h);
-				best.error = std::numeric_limits<long>::max();
+				auto& best8 = best16.SubVector(h);
+				best8.error = std::numeric_limits<long>::max();
 
 				const auto hor_offset =                      j * BLOCK_SIZE + ((h & 1) ? BLOCK_SIZE / 2 : 0);
 				const auto vert_offset = first_row_offset + (i * BLOCK_SIZE + ((h > 1) ? BLOCK_SIZE / 2 : 0)) * width_ext;
@@ -266,12 +277,32 @@ void MotionEstimator::ARPS(const uint8_t* cur_Y,
 		
 				const auto at_edge = j == 0 && (h & 1) == 0;
 				
-				EstimateAtLevel<&(SafeSAD_8x8)>(at_edge, prev_Y, cur, prev, predicted, best);
+				EstimateAtLevel<&(SafeSAD_8x8)>(at_edge, prev_Y, cur, prev, predicted, best8);
 				
-				predicted = best;
+				if (best8.error > 250) {
+					best8.Split();
+
+					predicted = best8;
+
+					for (int h2 = 0; h2 < 4; ++h2) {
+						auto& best4 = best8.SubVector(h2);
+						best4.error = std::numeric_limits<long>::max();
+
+						const auto hor_offset =                      j * BLOCK_SIZE + ((h & 1) ? BLOCK_SIZE / 2 : 0) + ((h2 & 1) ? BLOCK_SIZE / 4 : 0);
+						const auto vert_offset = first_row_offset + (i * BLOCK_SIZE + ((h > 1) ? BLOCK_SIZE / 2 : 0) + ((h2 > 1) ? BLOCK_SIZE / 4 : 0)) * width_ext;
+						const auto cur = cur_Y + vert_offset + hor_offset;
+						const auto prev = prev_Y + vert_offset + hor_offset;
+
+						const auto at_edge = j == 0 && (h & 1) == 0 && (h2 & 1) == 0;
+
+						EstimateAtLevel<&(SafeSAD_4x4)>(at_edge, prev_Y, cur, prev, predicted, best4);
+					}
+				}
+
+				predicted = best8;
 			}
 			
-			mvectors[block_id] = best_vector;
+			mvectors[block_id] = best16;
 		}
 	}
 }
