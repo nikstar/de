@@ -100,12 +100,6 @@ private:
 		const uint8_t* prev_Y_upleft,
 		MV* mvectors);
 
-	inline void SafeSAD_8x8(MV& mv, const uint8_t *block1, const uint8_t *block2, const int stride, const uint8_t *prev_Y) {
-		if (block2 < prev_Y + first_row_offset || block2 > prev_Y + first_row_offset + img_size) {
-			mv.error = std::numeric_limits<long>::max();
-			return;
-		}
-		mv.error = GetErrorSAD_8x8(block1, block2, stride);
-		return;
-	}
+	template <void(*SafeSAD_8x8)(MV&, const uint8_t *, const uint8_t *, const int, const uint8_t *, const int, const int)>
+	void MotionEstimator::EstimateAtLevel(bool at_edge, const uint8_t *prev_Y, const uint8_t *cur, const uint8_t *prev, MV& predicted, MV& best);
 };

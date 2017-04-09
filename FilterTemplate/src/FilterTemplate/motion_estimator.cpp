@@ -65,95 +65,177 @@ void MotionEstimator::FullSearch(const uint8_t* cur_Y,
 	const uint8_t* prev_Y_up,
 	const uint8_t* prev_Y_left,
 	const uint8_t* prev_Y_upleft,
-	MV* mvectors) 
+	MV* mvectors)
 {
-	std::unordered_map<ShiftDir, const uint8_t*> prev_map{
-		{ ShiftDir::NONE, prev_Y }
-	};
-
-	if (use_half_pixel) {
-		prev_map.emplace(ShiftDir::UP, prev_Y_up);
-		prev_map.emplace(ShiftDir::LEFT, prev_Y_left);
-		prev_map.emplace(ShiftDir::UPLEFT, prev_Y_upleft);
-	}
-
-	for (int i = 0; i < num_blocks_vert; ++i) {
-		for (int j = 0; j < num_blocks_hor; ++j) {
-			const auto block_id = i * num_blocks_hor + j;
-			const auto hor_offset = j * BLOCK_SIZE;
-			const auto vert_offset = first_row_offset + i * BLOCK_SIZE * width_ext;
-			const auto cur = cur_Y + vert_offset + hor_offset;
-
-			MV best_vector;
-			best_vector.error = std::numeric_limits<long>::max();
-
-			// Brute force
-			for (const auto& prev_pair : prev_map) {
-				const auto prev = prev_pair.second + vert_offset + hor_offset;
-
-				for (int y = -BORDER; y <= BORDER; ++y) {
-					for (int x = -BORDER; x <= BORDER; ++x) {
-						const auto comp = prev + y * width_ext + x;
-						const auto error = GetErrorSAD_16x16(cur, comp, width_ext);
-
-						if (error < best_vector.error) {
-							best_vector.x = x;
-							best_vector.y = y;
-							best_vector.shift_dir = prev_pair.first;
-							best_vector.error = error;
-						}
-					}
-				}
-			}
-
-			// Split into four subvectors if the error is too large
-			if (best_vector.error > 1000) {
-				best_vector.Split();
-
-				for (int h = 0; h < 4; ++h) {
-					auto& subvector = best_vector.SubVector(h);
-					subvector.error = std::numeric_limits<long>::max();
-
-					const auto hor_offset = j * BLOCK_SIZE + ((h & 1) ? BLOCK_SIZE / 2 : 0);
-					const auto vert_offset = first_row_offset + (i * BLOCK_SIZE + ((h > 1) ? BLOCK_SIZE / 2 : 0)) * width_ext;
-					const auto cur = cur_Y + vert_offset + hor_offset;
-
-					for (const auto& prev_pair : prev_map) {
-						const auto prev = prev_pair.second + vert_offset + hor_offset;
-
-						for (int y = -BORDER; y <= BORDER; ++y) {
-							for (int x = -BORDER; x <= BORDER; ++x) {
-								const auto comp = prev + y * width_ext + x;
-								const auto error = GetErrorSAD_8x8(cur, comp, width_ext);
-
-								if (error < subvector.error) {
-									subvector.x = x;
-									subvector.y = y;
-									subvector.shift_dir = prev_pair.first;
-									subvector.error = error;
-								}
-							}
-						}
-					}
-				}
-
-				if (best_vector.SubVector(0).error
-					+ best_vector.SubVector(1).error
-					+ best_vector.SubVector(2).error
-					+ best_vector.SubVector(3).error > best_vector.error * 0.7)
-					best_vector.Unsplit();
-			}
-
-			mvectors[block_id] = best_vector;
-		}
-	}
 }
 
+void SafeSAD_16x16(MV& mv, const uint8_t *block1, const uint8_t *block2, const int stride, const uint8_t *prev_Y, const int first_row_offset, const int img_size) {
+	if (block2 < prev_Y + first_row_offset || block2 > prev_Y + first_row_offset + img_size) {
+		mv.error = std::numeric_limits<long>::max();
+		return;
+	}
+	mv.error = GetErrorSAD_16x16(block1, block2, stride);
+	return;
+}
+
+void SafeSAD_8x8(MV& mv, const uint8_t *block1, const uint8_t *block2, const int stride, const uint8_t *prev_Y, const int first_row_offset, const int img_size) {
+	if (block2 < prev_Y + first_row_offset || block2 > prev_Y + first_row_offset + img_size) {
+		mv.error = std::numeric_limits<long>::max();
+		return;
+	}
+	mv.error = GetErrorSAD_8x8(block1, block2, stride);
+	return;
+}
 
 inline void update(MV& best, const MV& mv) {
 	if (mv.error < best.error) {
 		best = mv;
 	}
+}
+
+
+template <void(*SafeSAD_8x8)(MV&, const uint8_t *, const uint8_t *, const int, const uint8_t *, const int, const int)>
+void MotionEstimator::EstimateAtLevel(bool at_edge, const uint8_t *prev_Y, const uint8_t *cur, const uint8_t *prev, MV& predicted, MV& best) {
+	auto comp = prev;
+	MV current;
+
+	// check center (ZMP)
+	SafeSAD_8x8(current, cur, comp, width_ext, prev_Y, first_row_offset, img_size);
+	update(best, current);
+
+	if (best.error < zmp_threshold) {
+		return;
+	}
+
+	// Initial search
+	const auto arm_length = at_edge ? 2 : std::max(abs(predicted.x), abs(predicted.y));
+
+	if (arm_length == 0) {
+		// only search center
+	}
+	else {
+		// serach four rood points
+		// 1
+		current.x = -arm_length;
+		comp = prev - arm_length;
+		SafeSAD_8x8(current, cur, comp, width_ext, prev_Y, first_row_offset, img_size);
+		update(best, current);
+		// 2
+		current.x = arm_length;
+		comp = prev + arm_length;
+		SafeSAD_8x8(current, cur, comp, width_ext, prev_Y, first_row_offset, img_size);
+		update(best, current);
+		// 3
+		current.x = 0;
+		current.y = -arm_length;
+		comp = prev - arm_length * width_ext;
+		SafeSAD_8x8(current, cur, comp, width_ext, prev_Y, first_row_offset, img_size);
+		update(best, current);
+		// 4
+		current.y = arm_length;
+		comp = prev + arm_length * width_ext;
+		SafeSAD_8x8(current, cur, comp, width_ext, prev_Y, first_row_offset, img_size);
+		update(best, current);
+
+		// also search predicted MV
+		if (!at_edge && predicted.x != 0 && predicted.y != 0) {
+			const auto comp = prev + predicted.y * width_ext + predicted.x;
+			SafeSAD_8x8(predicted, cur, comp, width_ext, prev_Y, first_row_offset, img_size); // fixme
+			update(best, predicted);
+		}
+	}
+
+	if (best.error < first_threshold) {
+		return;
+	}
+
+	// Local search (URP)
+	do {
+		current = best;
+		const auto base = prev + current.y * width_ext + current.x;
+		// 1
+		current.x -= 1;
+		comp = base - 1;
+		SafeSAD_8x8(current, cur, comp, width_ext, prev_Y, first_row_offset, img_size);
+		update(best, current);
+		// 2
+		current.x += 2;
+		comp = base + 1;
+		SafeSAD_8x8(current, cur, comp, width_ext, prev_Y, first_row_offset, img_size);
+		update(best, current);
+		// 3
+		current.x -= 1;
+		current.y -= 1;
+		comp = base - width_ext;
+		SafeSAD_8x8(current, cur, comp, width_ext, prev_Y, first_row_offset, img_size);
+		update(best, current);
+		// 4
+		current.y += 2;
+		comp = base + width_ext;
+		SafeSAD_8x8(current, cur, comp, width_ext, prev_Y, first_row_offset, img_size);
+		update(best, current);
+		current.y -= 1;
+	} while (!(best.error < first_threshold) && (current.x != best.x || current.y != best.y));
+
+	/*if (use_half_pixel && best.error > second_threshold) {
+		current = best;
+		auto ofs = vert_offset + hor_offset + current.y * width_ext + current.x;
+		// 1
+		current.shift_dir = ShiftDir::LEFT;
+		comp = prev_Y_left + ofs;
+		SafeSAD_8x8(current, cur, comp, width_ext, prev_Y_left);
+		update(best, current);
+		// 2
+		current.shift_dir = ShiftDir::LEFT;
+		current.x += 1;
+		comp = prev_Y_left + ofs + 1;
+		SafeSAD_8x8(current, cur, comp, width_ext, prev_Y_left);
+		update(best, current);
+		current.x -= 1;
+		// 3
+		current.shift_dir = ShiftDir::UP;
+		comp = prev_Y_up + ofs;
+		SafeSAD_8x8(current, cur, comp, width_ext, prev_Y_up);
+		update(best, current);
+		// 4
+		current.shift_dir = ShiftDir::UP;
+		current.y += 1;
+		comp = prev_Y_up + ofs + width_ext;
+		SafeSAD_8x8(current, cur, comp, width_ext, prev_Y_up);
+		update(best, current);
+		current.y -= 1;
+
+		if (best.shift_dir == ShiftDir::UP) {
+			current = best;
+			// 1
+			current.shift_dir = ShiftDir::UPLEFT;
+			comp = prev_Y_upleft + ofs;
+			SafeSAD_8x8(current, cur, comp, width_ext, prev_Y_upleft);
+			update(best, current);
+			// 2
+			current.shift_dir = ShiftDir::UPLEFT;
+			current.x += 1;
+			comp = prev_Y_upleft + ofs + 1;
+			SafeSAD_8x8(current, cur, comp, width_ext, prev_Y_upleft);
+			update(best, current);
+
+		}
+
+		if (best.shift_dir == ShiftDir::LEFT) {
+			current = best;
+			// 3
+			current.shift_dir = ShiftDir::UPLEFT;
+			comp = prev_Y_upleft + ofs;
+			SafeSAD_8x8(current, cur, comp, width_ext, prev_Y_upleft);
+			update(best, current);
+			// 4
+			current.shift_dir = ShiftDir::UPLEFT;
+			current.y += 1;
+			comp = prev_Y_upleft + ofs + width_ext;
+			SafeSAD_8x8(current, cur, comp, width_ext, prev_Y_upleft);
+			update(best, current);
+		}
+	}*/
 }
 
 void MotionEstimator::ARPS(const uint8_t* cur_Y,
@@ -181,152 +263,11 @@ void MotionEstimator::ARPS(const uint8_t* cur_Y,
 				const auto vert_offset = first_row_offset + (i * BLOCK_SIZE + ((h > 1) ? BLOCK_SIZE / 2 : 0)) * width_ext;
 				const auto cur = cur_Y + vert_offset + hor_offset;
 				const auto prev = prev_Y + vert_offset + hor_offset;
-				auto comp = prev;
-
-				MV current;
-
- 				// check center (ZMP)
-				SafeSAD_8x8(current, cur, comp, width_ext, prev_Y);
-				update(best, current);
-
-				if (best.error < zmp_threshold) { 
-					mvectors[block_id] = best; 
-					predicted = best; 
-					continue; 
-				}
-
-				// Initial search
-				const auto arm_length = (j == 0 && (h & 1) == 0) ? 2 : std::max(abs(predicted.x), abs(predicted.y));
-
-				if (arm_length == 0) {
-					// only search center
-				}
-				else {
-					// serach four rood points
-					// 1
-					current.x = -arm_length;
-					comp = prev - arm_length;
-					SafeSAD_8x8(current, cur, comp, width_ext, prev_Y);
-					update(best, current);
-					// 2
-					current.x = arm_length;
-					comp = prev + arm_length;
-					SafeSAD_8x8(current, cur, comp, width_ext, prev_Y);
-					update(best, current);
-					// 3
-					current.x = 0;
-					current.y = -arm_length;
-					comp = prev - arm_length * width_ext;
-					SafeSAD_8x8(current, cur, comp, width_ext, prev_Y);
-					update(best, current);
-					// 4
-					current.y = arm_length;
-					comp = prev + arm_length * width_ext;
-					SafeSAD_8x8(current, cur, comp, width_ext, prev_Y);
-					update(best, current);
-
-					// also search predicted MV
-					if (predicted.x != 0 && predicted.y != 0) {
-						const auto comp = prev + predicted.y * width_ext + predicted.x;
-						SafeSAD_8x8(predicted, cur, comp, width_ext, prev_Y); // fixme
-						update(best, predicted);
-					}
-				}
-
-				if (best.error < first_threshold) { 
-					mvectors[block_id] = best; 
-					predicted = best; 
-					continue; 
-				}
+		
+				const auto at_edge = j == 0 && (h & 1) == 0;
 				
-				// Local search (URP)
-				do {
-					current = best;
-					const auto base = prev + current.y * width_ext + current.x;
-					// 1
-					current.x -= 1;
-					comp = base - 1;
-					SafeSAD_8x8(current, cur, comp, width_ext, prev_Y);
-					update(best, current);
-					// 2
-					current.x += 2;
-					comp = base + 1;
-					SafeSAD_8x8(current, cur, comp, width_ext, prev_Y);
-					update(best, current);
-					// 3
-					current.x -= 1;
-					current.y -= 1;
-					comp = base - width_ext;
-					SafeSAD_8x8(current, cur, comp, width_ext, prev_Y);
-					update(best, current);
-					// 4
-					current.y += 2;
-					comp = base + width_ext;
-					SafeSAD_8x8(current, cur, comp, width_ext, prev_Y);
-					update(best, current);
-					current.y -= 1;
-				} while (!(best.error < first_threshold) && (current.x != best.x || current.y != best.y));
-
-				if (use_half_pixel && best.error > second_threshold) {
-					current = best;
-					auto ofs = vert_offset + hor_offset + current.y * width_ext + current.x;
-					// 1
-					current.shift_dir = ShiftDir::LEFT;
-					comp = prev_Y_left + ofs;
-					SafeSAD_8x8(current, cur, comp, width_ext, prev_Y_left);
-					update(best, current);
-					// 2
-					current.shift_dir = ShiftDir::LEFT;
-					current.x += 1;
-					comp = prev_Y_left + ofs + 1;
-					SafeSAD_8x8(current, cur, comp, width_ext, prev_Y_left);
-					update(best, current);
-					current.x -= 1;
-					// 3
-					current.shift_dir = ShiftDir::UP;
-					comp = prev_Y_up + ofs;
-					SafeSAD_8x8(current, cur, comp, width_ext, prev_Y_up);
-					update(best, current);
-					// 4
-					current.shift_dir = ShiftDir::UP;
-					current.y += 1;
-					comp = prev_Y_up + ofs + width_ext;
-					SafeSAD_8x8(current, cur, comp, width_ext, prev_Y_up);
-					update(best, current);
-					current.y -= 1;
-
-					if (best.shift_dir == ShiftDir::UP) {
-						current = best;
-						// 1
-						current.shift_dir = ShiftDir::UPLEFT;
-						comp = prev_Y_upleft + ofs;
-						SafeSAD_8x8(current, cur, comp, width_ext, prev_Y_upleft);
-						update(best, current);
-						// 2
-						current.shift_dir = ShiftDir::UPLEFT;
-						current.x += 1;
-						comp = prev_Y_upleft + ofs + 1;
-						SafeSAD_8x8(current, cur, comp, width_ext, prev_Y_upleft);
-						update(best, current);
-
-					}
-
-					if (best.shift_dir == ShiftDir::LEFT) {
-						current = best;
-						// 3
-						current.shift_dir = ShiftDir::UPLEFT;
-						comp = prev_Y_upleft + ofs;
-						SafeSAD_8x8(current, cur, comp, width_ext, prev_Y_upleft);
-						update(best, current);
-						// 4
-						current.shift_dir = ShiftDir::UPLEFT;
-						current.y += 1;
-						comp = prev_Y_upleft + ofs + width_ext;
-						SafeSAD_8x8(current, cur, comp, width_ext, prev_Y_upleft);
-						update(best, current);
-					}
-				}
-
+				EstimateAtLevel<&(SafeSAD_8x8)>(at_edge, prev_Y, cur, prev, predicted, best);
+				
 				predicted = best;
 			}
 			
