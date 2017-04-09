@@ -170,9 +170,9 @@ void MotionEstimator::ARPS(const uint8_t* cur_Y,
 		for (int j = 0; j < num_blocks_hor; ++j) {
 			const auto block_id = i * num_blocks_hor + j;
 				
-			MV best_vector, predicted;
+			MV best_vector, current;
 			// split for 8x8
-			best_vector.Split()
+			best_vector.Split();
 			
 			for (int h = 0; h < 4; ++h) {
 				auto& best = best_vector.SubVector(h);

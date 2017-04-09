@@ -22,9 +22,9 @@ VirtualDub.video.SetCompression();
 VirtualDub.video.filters.Clear();
 VirtualDub.video.filters.Add("DE_Starshinov");
 
-VirtualDub.video.filters.instance[0].Config(4, 0, 0, 0, 40, 1);
+VirtualDub.video.filters.instance[0].Config(4, 0, 0, 1, 40, 1);
 VirtualDub.SaveAVI("depth-40.avi");
-VirtualDub.video.filters.instance[0].Config(4, 0, 0, 0, 100, 1);
+VirtualDub.video.filters.instance[0].Config(4, 0, 0, 1, 100, 1);
 VirtualDub.SaveAVI("depth-100.avi");
 
 VirtualDub.Close();
