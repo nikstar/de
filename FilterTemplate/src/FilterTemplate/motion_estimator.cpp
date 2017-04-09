@@ -150,7 +150,7 @@ void MotionEstimator::FullSearch(const uint8_t* cur_Y,
 }
 
 
-inline void update_best(MV& best, const MV& mv) {
+inline void update(MV& best, const MV& mv) {
 	if (mv.error < best.error) {
 		best = mv;
 	}
@@ -170,24 +170,25 @@ void MotionEstimator::ARPS(const uint8_t* cur_Y,
 		for (int j = 0; j < num_blocks_hor; ++j) {
 			const auto block_id = i * num_blocks_hor + j;
 				
-			MV best_vector, current;
-			// split for 8x8
-			best_vector.Split();
+			MV best_vector;
+			best_vector.Split(); // always split for 8x8
 			
 			for (int h = 0; h < 4; ++h) {
 				auto& best = best_vector.SubVector(h);
 				best.error = std::numeric_limits<long>::max();
 
-				const auto hor_offset = j * BLOCK_SIZE + ((h & 1) ? BLOCK_SIZE / 2 : 0);
+				const auto hor_offset =                      j * BLOCK_SIZE + ((h & 1) ? BLOCK_SIZE / 2 : 0);
 				const auto vert_offset = first_row_offset + (i * BLOCK_SIZE + ((h > 1) ? BLOCK_SIZE / 2 : 0)) * width_ext;
 				const auto cur = cur_Y + vert_offset + hor_offset;
 				const auto prev = prev_Y + vert_offset + hor_offset;
+				auto comp = prev;
 
-				const uint8_t *comp = prev;
+				MV current;
 
  				// check center (ZMP)
 				SafeSAD_8x8(current, cur, comp, width_ext, prev_Y);
-				update_best(best, current);
+				update(best, current);
+
 				if (best.error < zmp_threshold) { 
 					mvectors[block_id] = best; 
 					predicted = best; 
@@ -195,7 +196,7 @@ void MotionEstimator::ARPS(const uint8_t* cur_Y,
 				}
 
 				// Initial search
-				const auto arm_length = j == 0 ? 2 : std::max(abs(predicted.x), abs(predicted.y));
+				const auto arm_length = (j == 0 && (h & 1) == 0) ? 2 : std::max(abs(predicted.x), abs(predicted.y));
 
 				if (arm_length == 0) {
 					// only search center
@@ -206,29 +207,29 @@ void MotionEstimator::ARPS(const uint8_t* cur_Y,
 					current.x = -arm_length;
 					comp = prev - arm_length;
 					SafeSAD_8x8(current, cur, comp, width_ext, prev_Y);
-					update_best(best, current);
+					update(best, current);
 					// 2
 					current.x = arm_length;
 					comp = prev + arm_length;
 					SafeSAD_8x8(current, cur, comp, width_ext, prev_Y);
-					update_best(best, current);
+					update(best, current);
 					// 3
 					current.x = 0;
 					current.y = -arm_length;
 					comp = prev - arm_length * width_ext;
 					SafeSAD_8x8(current, cur, comp, width_ext, prev_Y);
-					update_best(best, current);
+					update(best, current);
 					// 4
 					current.y = arm_length;
 					comp = prev + arm_length * width_ext;
 					SafeSAD_8x8(current, cur, comp, width_ext, prev_Y);
-					update_best(best, current);
+					update(best, current);
 
 					// also search predicted MV
 					if (predicted.x != 0 && predicted.y != 0) {
 						const auto comp = prev + predicted.y * width_ext + predicted.x;
 						SafeSAD_8x8(predicted, cur, comp, width_ext, prev_Y); // fixme
-						update_best(best, predicted);
+						update(best, predicted);
 					}
 				}
 
@@ -246,23 +247,23 @@ void MotionEstimator::ARPS(const uint8_t* cur_Y,
 					current.x -= 1;
 					comp = base - 1;
 					SafeSAD_8x8(current, cur, comp, width_ext, prev_Y);
-					update_best(best, current);
+					update(best, current);
 					// 2
 					current.x += 2;
 					comp = base + 1;
 					SafeSAD_8x8(current, cur, comp, width_ext, prev_Y);
-					update_best(best, current);
+					update(best, current);
 					// 3
 					current.x -= 1;
 					current.y -= 1;
 					comp = base - width_ext;
 					SafeSAD_8x8(current, cur, comp, width_ext, prev_Y);
-					update_best(best, current);
+					update(best, current);
 					// 4
 					current.y += 2;
 					comp = base + width_ext;
 					SafeSAD_8x8(current, cur, comp, width_ext, prev_Y);
-					update_best(best, current);
+					update(best, current);
 					current.y -= 1;
 				} while (!(best.error < first_threshold) && (current.x != best.x || current.y != best.y));
 
@@ -273,25 +274,25 @@ void MotionEstimator::ARPS(const uint8_t* cur_Y,
 					current.shift_dir = ShiftDir::LEFT;
 					comp = prev_Y_left + ofs;
 					SafeSAD_8x8(current, cur, comp, width_ext, prev_Y_left);
-					update_best(best, current);
+					update(best, current);
 					// 2
 					current.shift_dir = ShiftDir::LEFT;
 					current.x += 1;
 					comp = prev_Y_left + ofs + 1;
 					SafeSAD_8x8(current, cur, comp, width_ext, prev_Y_left);
-					update_best(best, current);
+					update(best, current);
 					current.x -= 1;
 					// 3
 					current.shift_dir = ShiftDir::UP;
 					comp = prev_Y_up + ofs;
 					SafeSAD_8x8(current, cur, comp, width_ext, prev_Y_up);
-					update_best(best, current);
+					update(best, current);
 					// 4
 					current.shift_dir = ShiftDir::UP;
 					current.y += 1;
 					comp = prev_Y_up + ofs + width_ext;
 					SafeSAD_8x8(current, cur, comp, width_ext, prev_Y_up);
-					update_best(best, current);
+					update(best, current);
 					current.y -= 1;
 
 					if (best.shift_dir == ShiftDir::UP) {
@@ -300,13 +301,13 @@ void MotionEstimator::ARPS(const uint8_t* cur_Y,
 						current.shift_dir = ShiftDir::UPLEFT;
 						comp = prev_Y_upleft + ofs;
 						SafeSAD_8x8(current, cur, comp, width_ext, prev_Y_upleft);
-						update_best(best, current);
+						update(best, current);
 						// 2
 						current.shift_dir = ShiftDir::UPLEFT;
 						current.x += 1;
 						comp = prev_Y_upleft + ofs + 1;
 						SafeSAD_8x8(current, cur, comp, width_ext, prev_Y_upleft);
-						update_best(best, current);
+						update(best, current);
 
 					}
 
@@ -316,13 +317,13 @@ void MotionEstimator::ARPS(const uint8_t* cur_Y,
 						current.shift_dir = ShiftDir::UPLEFT;
 						comp = prev_Y_upleft + ofs;
 						SafeSAD_8x8(current, cur, comp, width_ext, prev_Y_upleft);
-						update_best(best, current);
+						update(best, current);
 						// 4
 						current.shift_dir = ShiftDir::UPLEFT;
 						current.y += 1;
 						comp = prev_Y_upleft + ofs + width_ext;
 						SafeSAD_8x8(current, cur, comp, width_ext, prev_Y_upleft);
-						update_best(best, current);
+						update(best, current);
 					}
 				}
 
