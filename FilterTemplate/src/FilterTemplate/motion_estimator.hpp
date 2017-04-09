@@ -100,12 +100,12 @@ private:
 		const uint8_t* prev_Y_upleft,
 		MV* mvectors);
 
-	inline void SetCachedSAD_16x16(MV& mv, const uint8_t *block1, const uint8_t *block2, const int stride, const uint8_t *prev_Y) {
+	inline void SafeSAD_8x8(MV& mv, const uint8_t *block1, const uint8_t *block2, const int stride, const uint8_t *prev_Y) {
 		if (block2 < prev_Y + first_row_offset || block2 > prev_Y + first_row_offset + img_size) {
 			mv.error = std::numeric_limits<long>::max();
 			return;
 		}
-		mv.error = GetErrorSAD_16x16(block1, block2, stride);
+		mv.error = GetErrorSAD_8x8(block1, block2, stride);
 		return;
 	}
 };

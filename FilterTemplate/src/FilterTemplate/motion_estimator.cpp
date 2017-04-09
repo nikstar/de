@@ -156,17 +156,6 @@ inline void update_best(MV& best, const MV& mv) {
 	}
 }
 
-#define try_early_exit(threshold) \
-	if (best.error < threshold) { \
-		mvectors[block_id] = best; \
-		predicted = best; \
-		continue; \
-	}
-
-constexpr int cache_width = 64;
-constexpr int cache_size = cache_width*cache_width;
-constexpr int cache_offset = (cache_width - 1) / 2;
-
 void MotionEstimator::ARPS(const uint8_t* cur_Y,
 	const uint8_t* prev_Y,
 	const uint8_t* prev_Y_up,
@@ -180,156 +169,167 @@ void MotionEstimator::ARPS(const uint8_t* cur_Y,
 	for (int i = 0; i < num_blocks_vert; ++i) {
 		for (int j = 0; j < num_blocks_hor; ++j) {
 			const auto block_id = i * num_blocks_hor + j;
-			const auto hor_offset = j * BLOCK_SIZE;
-			const auto vert_offset = first_row_offset + i * BLOCK_SIZE * width_ext;
-			const auto cur = cur_Y + vert_offset + hor_offset;
+				
+			MV best_vector, predicted;
+			// split for 8x8
+			best_vector.Split()
+			
+			for (int h = 0; h < 4; ++h) {
+				auto& best = best_vector.SubVector(h);
+				best.error = std::numeric_limits<long>::max();
 
-			const auto prev = prev_Y + vert_offset + hor_offset;
-			const uint8_t *comp = prev;
+				const auto hor_offset = j * BLOCK_SIZE + ((h & 1) ? BLOCK_SIZE / 2 : 0);
+				const auto vert_offset = first_row_offset + (i * BLOCK_SIZE + ((h > 1) ? BLOCK_SIZE / 2 : 0)) * width_ext;
+				const auto cur = cur_Y + vert_offset + hor_offset;
+				const auto prev = prev_Y + vert_offset + hor_offset;
 
-			MV best;
-			best.error = std::numeric_limits<long>::max();
+				const uint8_t *comp = prev;
 
-			MV current;
-
-			//memset(cache_mem, 0, cache_size); -- note turn on if using cache
-
-			// ZMP
-			SetCachedSAD_16x16(current, cur, comp, width_ext, prev_Y);
-			update_best(best, current);
-			try_early_exit(zmp_threshold);
-
-			// Initial search
-			const auto arm_length = j == 0 ? 2 : std::max(abs(predicted.x), abs(predicted.y));
-
-			if (arm_length == 0) {
-				// only search center
-			}
-			else {
-				// serach four rood points
-				// 1
-				current.x = -arm_length;
-				comp = prev - arm_length;
-				SetCachedSAD_16x16(current, cur, comp, width_ext, prev_Y);
+ 				// check center (ZMP)
+				SafeSAD_8x8(current, cur, comp, width_ext, prev_Y);
 				update_best(best, current);
-				// 2
-				current.x = arm_length;
-				comp = prev + arm_length;
-				SetCachedSAD_16x16(current, cur, comp, width_ext, prev_Y);
-				update_best(best, current);
-				// 3
-				current.x = 0;
-				current.y = -arm_length;
-				comp = prev - arm_length * width_ext;
-				SetCachedSAD_16x16(current, cur, comp, width_ext, prev_Y);
-				update_best(best, current);
-				// 4
-				current.y = arm_length;
-				comp = prev + arm_length * width_ext;
-				SetCachedSAD_16x16(current, cur, comp, width_ext, prev_Y);
-				update_best(best, current);
-
-				// also search predicted MV
-				if (predicted.x != 0 && predicted.y != 0) {
-					const auto comp = prev + predicted.y * width_ext + predicted.x;
-					SetCachedSAD_16x16(predicted, cur, comp, width_ext, prev_Y); // fixme
-					update_best(best, predicted);
+				if (best.error < zmp_threshold) { 
+					mvectors[block_id] = best; 
+					predicted = best; 
+					continue; 
 				}
-			}
 
-			try_early_exit(first_threshold);
+				// Initial search
+				const auto arm_length = j == 0 ? 2 : std::max(abs(predicted.x), abs(predicted.y));
 
-			// Local search (URP)
-			do {
-				current = best;
-				const auto base = prev + current.y * width_ext + current.x;
-				// 1
-				current.x -= 1;
-				comp = base - 1;
-				SetCachedSAD_16x16(current, cur, comp, width_ext, prev_Y);
-				update_best(best, current);
-				// 2
-				current.x += 2;
-				comp = base + 1;
-				SetCachedSAD_16x16(current, cur, comp, width_ext, prev_Y);
-				update_best(best, current);
-				// 3
-				current.x -= 1;
-				current.y -= 1;
-				comp = base - width_ext;
-				SetCachedSAD_16x16(current, cur, comp, width_ext, prev_Y);
-				update_best(best, current);
-				// 4
-				current.y += 2;
-				comp = base + width_ext;
-				SetCachedSAD_16x16(current, cur, comp, width_ext, prev_Y);
-				update_best(best, current);
-				current.y -= 1;
-			} while (!(best.error < first_threshold) && (current.x != best.x || current.y != best.y));
-
-			if (use_half_pixel && best.error > second_threshold) {
-				current = best;
-				auto ofs = vert_offset + hor_offset + current.y * width_ext + current.x;
-				// 1
-				current.shift_dir = ShiftDir::LEFT;
-				comp = prev_Y_left + ofs;
-				SetCachedSAD_16x16(current, cur, comp, width_ext, prev_Y_left);
-				update_best(best, current);
-				// 2
-				current.shift_dir = ShiftDir::LEFT;
-				current.x += 1;
-				comp = prev_Y_left + ofs + 1;
-				SetCachedSAD_16x16(current, cur, comp, width_ext, prev_Y_left);
-				update_best(best, current);
-				current.x -= 1;
-				// 3
-				current.shift_dir = ShiftDir::UP;
-				comp = prev_Y_up + ofs;
-				SetCachedSAD_16x16(current, cur, comp, width_ext, prev_Y_up);
-				update_best(best, current);
-				// 4
-				current.shift_dir = ShiftDir::UP;
-				current.y += 1;
-				comp = prev_Y_up + ofs + width_ext;
-				SetCachedSAD_16x16(current, cur, comp, width_ext, prev_Y_up);
-				update_best(best, current);
-				current.y -= 1;
-
-				if (best.shift_dir == ShiftDir::UP) {
-					current = best;
+				if (arm_length == 0) {
+					// only search center
+				}
+				else {
+					// serach four rood points
 					// 1
-					current.shift_dir = ShiftDir::UPLEFT;
-					comp = prev_Y_upleft + ofs;
-					SetCachedSAD_16x16(current, cur, comp, width_ext, prev_Y_upleft);
+					current.x = -arm_length;
+					comp = prev - arm_length;
+					SafeSAD_8x8(current, cur, comp, width_ext, prev_Y);
 					update_best(best, current);
 					// 2
-					current.shift_dir = ShiftDir::UPLEFT;
-					current.x += 1;
-					comp = prev_Y_upleft + ofs + 1;
-					SetCachedSAD_16x16(current, cur, comp, width_ext, prev_Y_upleft);
+					current.x = arm_length;
+					comp = prev + arm_length;
+					SafeSAD_8x8(current, cur, comp, width_ext, prev_Y);
 					update_best(best, current);
-
-				}
-
-				if (best.shift_dir == ShiftDir::LEFT) {
-					current = best;
 					// 3
-					current.shift_dir = ShiftDir::UPLEFT;
-					comp = prev_Y_upleft + ofs;
-					SetCachedSAD_16x16(current, cur, comp, width_ext, prev_Y_upleft);
+					current.x = 0;
+					current.y = -arm_length;
+					comp = prev - arm_length * width_ext;
+					SafeSAD_8x8(current, cur, comp, width_ext, prev_Y);
 					update_best(best, current);
 					// 4
-					current.shift_dir = ShiftDir::UPLEFT;
-					current.y += 1;
-					comp = prev_Y_upleft + ofs + width_ext;
-					SetCachedSAD_16x16(current, cur, comp, width_ext, prev_Y_upleft);
+					current.y = arm_length;
+					comp = prev + arm_length * width_ext;
+					SafeSAD_8x8(current, cur, comp, width_ext, prev_Y);
 					update_best(best, current);
+
+					// also search predicted MV
+					if (predicted.x != 0 && predicted.y != 0) {
+						const auto comp = prev + predicted.y * width_ext + predicted.x;
+						SafeSAD_8x8(predicted, cur, comp, width_ext, prev_Y); // fixme
+						update_best(best, predicted);
+					}
 				}
 
-			}
+				if (best.error < first_threshold) { 
+					mvectors[block_id] = best; 
+					predicted = best; 
+					continue; 
+				}
+				
+				// Local search (URP)
+				do {
+					current = best;
+					const auto base = prev + current.y * width_ext + current.x;
+					// 1
+					current.x -= 1;
+					comp = base - 1;
+					SafeSAD_8x8(current, cur, comp, width_ext, prev_Y);
+					update_best(best, current);
+					// 2
+					current.x += 2;
+					comp = base + 1;
+					SafeSAD_8x8(current, cur, comp, width_ext, prev_Y);
+					update_best(best, current);
+					// 3
+					current.x -= 1;
+					current.y -= 1;
+					comp = base - width_ext;
+					SafeSAD_8x8(current, cur, comp, width_ext, prev_Y);
+					update_best(best, current);
+					// 4
+					current.y += 2;
+					comp = base + width_ext;
+					SafeSAD_8x8(current, cur, comp, width_ext, prev_Y);
+					update_best(best, current);
+					current.y -= 1;
+				} while (!(best.error < first_threshold) && (current.x != best.x || current.y != best.y));
 
-			mvectors[block_id] = best;
-			predicted = best;
+				if (use_half_pixel && best.error > second_threshold) {
+					current = best;
+					auto ofs = vert_offset + hor_offset + current.y * width_ext + current.x;
+					// 1
+					current.shift_dir = ShiftDir::LEFT;
+					comp = prev_Y_left + ofs;
+					SafeSAD_8x8(current, cur, comp, width_ext, prev_Y_left);
+					update_best(best, current);
+					// 2
+					current.shift_dir = ShiftDir::LEFT;
+					current.x += 1;
+					comp = prev_Y_left + ofs + 1;
+					SafeSAD_8x8(current, cur, comp, width_ext, prev_Y_left);
+					update_best(best, current);
+					current.x -= 1;
+					// 3
+					current.shift_dir = ShiftDir::UP;
+					comp = prev_Y_up + ofs;
+					SafeSAD_8x8(current, cur, comp, width_ext, prev_Y_up);
+					update_best(best, current);
+					// 4
+					current.shift_dir = ShiftDir::UP;
+					current.y += 1;
+					comp = prev_Y_up + ofs + width_ext;
+					SafeSAD_8x8(current, cur, comp, width_ext, prev_Y_up);
+					update_best(best, current);
+					current.y -= 1;
+
+					if (best.shift_dir == ShiftDir::UP) {
+						current = best;
+						// 1
+						current.shift_dir = ShiftDir::UPLEFT;
+						comp = prev_Y_upleft + ofs;
+						SafeSAD_8x8(current, cur, comp, width_ext, prev_Y_upleft);
+						update_best(best, current);
+						// 2
+						current.shift_dir = ShiftDir::UPLEFT;
+						current.x += 1;
+						comp = prev_Y_upleft + ofs + 1;
+						SafeSAD_8x8(current, cur, comp, width_ext, prev_Y_upleft);
+						update_best(best, current);
+
+					}
+
+					if (best.shift_dir == ShiftDir::LEFT) {
+						current = best;
+						// 3
+						current.shift_dir = ShiftDir::UPLEFT;
+						comp = prev_Y_upleft + ofs;
+						SafeSAD_8x8(current, cur, comp, width_ext, prev_Y_upleft);
+						update_best(best, current);
+						// 4
+						current.shift_dir = ShiftDir::UPLEFT;
+						current.y += 1;
+						comp = prev_Y_upleft + ofs + width_ext;
+						SafeSAD_8x8(current, cur, comp, width_ext, prev_Y_upleft);
+						update_best(best, current);
+					}
+				}
+
+				predicted = best;
+			}
+			
+			mvectors[block_id] = best_vector;
 		}
 	}
 }
