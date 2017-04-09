@@ -3,6 +3,35 @@
 #include "motion_estimator.hpp"
 #include "mat.h"
 
+const int thresholds[5][3][3] = {
+	{
+		{ 768, 768, 512 },
+		{ 256, 256, 192 },
+		{ 256, 256, 192 }
+	},
+	{
+		{ 768, 768, 512 },
+		{ 256, 256, 192 },
+		{ 256, 256, 192 }
+	},
+	{
+		{ 768, 768, 512 },
+		{ 256, 256, 192 },
+		{ 256, 256, 192 }
+	},
+	{
+		{ 768, 768, 512 },
+		{ 256, 256, 192 },
+		{ 256, 256, 192 }
+	},
+	{
+		{ 768, 768, 512 },
+		{ 256, 256, 192 },
+		{ 256, 256, 192 }
+	}
+};
+
+
 MotionEstimator::MotionEstimator(int width, int height, uint8_t quality, bool use_half_pixel)
 	: width(width)
 	, height(height)
@@ -13,6 +42,7 @@ MotionEstimator::MotionEstimator(int width, int height, uint8_t quality, bool us
 	, num_blocks_vert((height + BLOCK_SIZE - 1) / BLOCK_SIZE)
 	, first_row_offset(width_ext * BORDER + BORDER)
 {
+
 	if (quality > 90) {
 		zmp_threshold = (!use_half_pixel) ? 256 : 128;
 		first_threshold = (!use_half_pixel) ? 256 : 128;
@@ -295,7 +325,11 @@ void MotionEstimator::ARPS(const uint8_t* cur_Y,
 
 						const auto at_edge = j == 0 && (h & 1) == 0 && (h2 & 1) == 0;
 
-						EstimateAtLevel<&(SafeSAD_4x4)>(at_edge, prev_Y, cur, prev, predicted, best4);
+						EstimateAtLevel<&(SafeSAD_4x4)>(at_edge, prev_Y, cur, prev, predicted, best4); // FIX thresholds
+					}
+
+					if (best8.SubVector(0).error + best8.SubVector(1).error + best8.SubVector(2).error + best8.SubVector(3).error >= 3 * best8.error) {
+						best8.Unsplit(); 
 					}
 				}
 

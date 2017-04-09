@@ -38,6 +38,12 @@ void DepthEstimator::Estimate(const uint8_t* cur_Y,
 				const auto h = (((y % MotionEstimator::BLOCK_SIZE) < (MotionEstimator::BLOCK_SIZE / 2)) ? 0 : 2)
 					+ (((x % MotionEstimator::BLOCK_SIZE) < (MotionEstimator::BLOCK_SIZE / 2)) ? 0 : 1);
 				mv = mv.SubVector(h);
+				
+				if (mv.IsSplit()) {
+					const auto h = (((y % (MotionEstimator::BLOCK_SIZE / 2)) < (MotionEstimator::BLOCK_SIZE / 4)) ? 0 : 2)
+						+ (((x % (MotionEstimator::BLOCK_SIZE / 2)) < (MotionEstimator::BLOCK_SIZE / 4)) ? 0 : 1);
+					mv = mv.SubVector(h);
+				}
 			}
 
 			depth_map[y * width + x] = static_cast<uint8_t>(hypot(mv.x, mv.y) * MULTIPLIER);
