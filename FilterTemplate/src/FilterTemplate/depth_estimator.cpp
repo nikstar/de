@@ -3,6 +3,34 @@
 #include "motion_estimator.hpp"
 #include "depth_estimator.hpp"
 
+//http://stackoverflow.com/questions/8204645/implementing-gaussian-blur-how-to-calculate-convolution-matrix-kernel
+
+double * GaussianFilter(int W, double sigma) {
+	double *kernel = new double [W * W];
+	double mean = W / 2.0;
+	double sum = 0.0; // For accumulating the kernel values
+	for (int x = 0; x < W; ++x) {
+		for (int y = 0; y < W; ++y) {
+			kernel[x + y * W] = exp(-0.5 * (pow((x - mean) / sigma, 2.0) + pow((y - mean) / sigma, 2.0)))
+				/ (2 * 3.14159 * sigma * sigma);
+
+			// Accumulate the kernel values
+			sum += kernel[x + y * W];
+		}
+	}
+
+	// Normalize the kernel
+	for (int x = 0; x < W; ++x) {
+		for (int y = 0; y < W; ++y) {
+			kernel[x + y * W] /= sum;
+		}
+	}
+
+	return kernel;
+}
+
+
+
 DepthEstimator::DepthEstimator(int width, int height, uint8_t quality)
 	: width(width)
 	, height(height)
@@ -18,6 +46,9 @@ DepthEstimator::~DepthEstimator() {
 	// PUT YOUR CODE HERE
 }
 
+
+
+
 void DepthEstimator::Estimate(const uint8_t* cur_Y,
                               const int16_t* cur_U,
                               const int16_t* cur_V,
@@ -26,6 +57,9 @@ void DepthEstimator::Estimate(const uint8_t* cur_Y,
 	// PUT YOUR CODE HERE
 	constexpr double MULTIPLIER = 32.0;
 
+	double *filter = GaussianFilter(5, 1.0);
+
+	// create initial map
 	for (int y = 0; y < height; ++y) {
 		for (int x = 0; x < width; ++x) {
 			const auto i = (y / MotionEstimator::BLOCK_SIZE);
@@ -46,7 +80,11 @@ void DepthEstimator::Estimate(const uint8_t* cur_Y,
 				}
 			}
 
-			depth_map[y * width + x] = static_cast<uint8_t>(hypot(mv.x, mv.y) * MULTIPLIER);
+			depth_map[y * width + x] = static_cast<uint8_t>(abs(mv.x) * MULTIPLIER);
 		}
 	}
+
+
+
+
 }
