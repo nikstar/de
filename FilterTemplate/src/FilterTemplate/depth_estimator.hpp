@@ -1,6 +1,7 @@
 #pragma once
 
 #include <cstdint>
+#include <deque>
 #include "mv.hpp"
 
 class DepthEstimator {
@@ -59,4 +60,26 @@ private:
 
 	/// Position of the first pixel of the frame in the extended frame
 	const int first_row_offset;
+
+	// data
+	const int max_history = 5;
+	std::deque<uint8_t *> history;
+
+
+	/// Convert MV into depth map
+	void CreateInitialMap(const MV* mvectors, uint8_t* depth_map);
+	
+	/// Update history with new motion vectors
+	void UpdateHistory(const MV* mvectors);
+
+
+	/// Apply temporal median filter
+	void ApplyMedianFilter(uint8_t* depth_map);
+
+	/// Apply cross bilateral filter based on image data
+	void ApplyCrossBilateralFilter(uint8_t *depth_map, const uint8_t * cur_Y, const int16_t * cur_U, const int16_t * cur_V);
+
+	/// Cache DM for use in median filter
+	void Cache(uint8_t * depth_map);
+
 };

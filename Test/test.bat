@@ -1,1 +1,1 @@
-"C:\Tools\VirtualDub x86\VirtualDub.exe" /s test.vdscript /x
+"C:\Tools\VirtualDub\VirtualDub.exe" /s test.vdscript /x
