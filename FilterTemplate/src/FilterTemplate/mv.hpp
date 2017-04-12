@@ -74,7 +74,7 @@ public:
 	}
 
 	/// Get a subvector
-	inline MV& SubVector(int id)
+	inline MV& SubVector(int id) const
 	{
 		assert(subvectors && id >= 0 && id < 4);
 		return (*subvectors)[id];

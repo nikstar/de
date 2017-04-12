@@ -62,7 +62,7 @@ private:
 	const int first_row_offset;
 
 	// data
-	const int max_history = 5;
+	const int max_history = 3;
 	std::deque<uint8_t *> history;
 
 

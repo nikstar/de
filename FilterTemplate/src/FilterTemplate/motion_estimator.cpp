@@ -97,7 +97,79 @@ void MotionEstimator::FullSearch(const uint8_t* cur_Y,
 	const uint8_t* prev_Y_upleft,
 	MV* mvectors)
 {
+	std::unordered_map<ShiftDir, const uint8_t*> prev_map{
+		{ ShiftDir::NONE, prev_Y }
+	};
+
+	/*if (use_half_pixel) {
+		prev_map.emplace(ShiftDir::UP, prev_Y_up);
+		prev_map.emplace(ShiftDir::LEFT, prev_Y_left);
+		prev_map.emplace(ShiftDir::UPLEFT, prev_Y_upleft);
+	}*/
+
+	for (int i = 0; i < num_blocks_vert; ++i) {
+		for (int j = 0; j < num_blocks_hor; ++j) {
+			const auto block_id = i * num_blocks_hor + j;
+			const auto hor_offset = j * BLOCK_SIZE;
+			const auto vert_offset = first_row_offset + i * BLOCK_SIZE * width_ext;
+			const auto cur = cur_Y + vert_offset + hor_offset;
+
+			MV best_vector;
+			best_vector.error = std::numeric_limits<long>::max();
+
+			// Split into four subvectors if the error is too large
+			best_vector.Split();
+
+			for (int h = 0; h < 4; ++h) {
+				auto& best8 = best_vector.SubVector(h);
+				best8.error = std::numeric_limits<long>::max();
+				best8.Split();
+
+				for (int h2 = 0; h2 < 4; ++h2) {
+					auto& best4 = best8.SubVector(h2);
+					best4.error = std::numeric_limits<long>::max();
+
+					const auto hor_offset = j * BLOCK_SIZE + ((h & 1) ? BLOCK_SIZE / 2 : 0) + ((h2 & 1) ? BLOCK_SIZE / 4 : 0);
+					const auto vert_offset = first_row_offset + (i * BLOCK_SIZE + ((h > 1) ? BLOCK_SIZE / 2 : 0) + ((h2 > 1) ? BLOCK_SIZE / 4 : 0)) * width_ext;
+					const auto cur = cur_Y + vert_offset + hor_offset;
+						
+					for (const auto& prev_pair : prev_map) {
+						const auto prev = prev_pair.second + vert_offset + hor_offset;
+
+						for (int y = -6; y <= 6; ++y) {
+							for (int x = -BORDER; x <= BORDER; ++x) {
+								const auto comp = prev + y * width_ext + x;
+									
+								auto shifted1 = cur - 2 * width_ext - 2;
+								auto shifted2 = comp - 2 * width_ext - 2;
+
+									
+								if (shifted2 < prev_pair.second || shifted2 > prev_pair.second + first_row_offset + img_size) {
+									continue;
+								}
+
+								const auto error = GetErrorSAD_8x8(shifted1, shifted2, width_ext);
+								if (error < best4.error) {
+									best4.x = x;
+									best4.y = y;
+									best4.shift_dir = prev_pair.first;
+									best4.error = error;
+								}
+							}
+						}
+					}
+				}
+
+				best8.x = best8.SubVector(0).x;
+				best8.y = best8.SubVector(0).y;
+
+			}
+		
+			mvectors[block_id] = best_vector;
+		}
+	}
 }
+
 
 void SafeSAD_16x16(MV& mv, const uint8_t *block1, const uint8_t *block2, const int stride, const uint8_t *prev_Y, const int first_row_offset, const int img_size) {
 	if (block2 < prev_Y + first_row_offset || block2 > prev_Y + first_row_offset + img_size) {
@@ -119,7 +191,7 @@ void SafeSAD_4x4(MV& mv, const uint8_t *block1, const uint8_t *block2, const int
 	auto shifted1 = block1 - 2 * stride - 2;
 	auto shifted2 = block2 - 2 * stride - 2;
 	
-	if (shifted2 < prev_Y + first_row_offset || shifted2 > prev_Y + first_row_offset + img_size) {
+	if (shifted2 < prev_Y || shifted2 > prev_Y + first_row_offset + img_size) {
 		mv.error = std::numeric_limits<long>::max();
 		return;
 	}
@@ -309,7 +381,7 @@ void MotionEstimator::ARPS(const uint8_t* cur_Y,
 				
 				EstimateAtLevel<&(SafeSAD_8x8)>(at_edge, prev_Y, cur, prev, predicted, best8);
 				
-				if (best8.error > 250) {
+				if (best8.error > -1) { // was 250
 					best8.Split();
 
 					predicted = best8;
@@ -328,9 +400,9 @@ void MotionEstimator::ARPS(const uint8_t* cur_Y,
 						EstimateAtLevel<&(SafeSAD_4x4)>(at_edge, prev_Y, cur, prev, predicted, best4); // FIX thresholds
 					}
 
-					if (best8.SubVector(0).error + best8.SubVector(1).error + best8.SubVector(2).error + best8.SubVector(3).error >= 3 * best8.error) {
+					/*if (best8.SubVector(0).error + best8.SubVector(1).error + best8.SubVector(2).error + best8.SubVector(3).error >= 3 * best8.error) {
 						best8.Unsplit(); 
-					}
+					}*/
 				}
 
 				predicted = best8;
