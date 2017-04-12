@@ -134,7 +134,7 @@ void DepthEstimator::ApplyCrossBilateralFilter(uint8_t * depth_map, const uint8_
 {
 	constexpr int S = 3;
 	constexpr int W = 2 * S + 1;
-	constexpr double sigma1 = 15.0, sigma2 = 100.0;
+	constexpr double sigma1 = 2.0, sigma2 = 10.0;
 
 	
 	auto filt = new uint8_t[height*width];
@@ -152,8 +152,13 @@ void DepthEstimator::ApplyCrossBilateralFilter(uint8_t * depth_map, const uint8_
 			for (int i = std::max(-S, 0 - y); i < std::min(S, height - y - 1); ++i) {
 				for (int j = std::max(-S, 0 - x); j < std::min(S, width - x - 1); ++j) {
 					auto v = 
-						exp(-0.5*sqrt(sqr(i)+sqr(j)) / sigma1) *
-						exp(-0.5*abs(*Y_center - *(Y_center + width_ext * i + j)) / sigma2);
+						//exp(-0.5*sqrt(sqr(i)+sqr(j)) / sigma1) *
+						exp(
+							-0.5*sqrt(
+								sqr(*Y_center - *(Y_center + width_ext * i + j))+
+								sqr(cur_U[y * width + x] - cur_U[(y + i)*width + (x + j)]) +
+								sqr(cur_V[y * width + x] - cur_V[(y + i)*width + (x + j)])
+							) / sigma2);
 
 					acc += v * *(depth_center + i * width + j);
 					sum += v;

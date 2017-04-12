@@ -75,9 +75,13 @@ MotionEstimator::MotionEstimator(int width, int height, uint8_t quality, bool us
 	second_threshold /= 4;
 
 	img_size = width_ext * height;
+
+	prev = NULL;
+	//prev = new MV[height*width];
 }
 
 MotionEstimator::~MotionEstimator() {
+	delete[] prev;
 }
 
 void MotionEstimator::Estimate(const uint8_t* cur_Y,
@@ -191,6 +195,11 @@ void SafeSAD_4x4(MV& mv, const uint8_t *block1, const uint8_t *block2, const int
 	auto shifted1 = block1 - 2 * stride - 2;
 	auto shifted2 = block2 - 2 * stride - 2;
 	
+	if (abs(mv.x) > 15 || abs(mv.y) > 6) {
+		mv.error = std::numeric_limits<long>::max();
+		return;
+	}
+
 	if (shifted2 < prev_Y || shifted2 > prev_Y + first_row_offset + img_size) {
 		mv.error = std::numeric_limits<long>::max();
 		return;
@@ -397,6 +406,10 @@ void MotionEstimator::ARPS(const uint8_t* cur_Y,
 
 						const auto at_edge = j == 0 && (h & 1) == 0 && (h2 & 1) == 0;
 
+						if (this->prev) {
+						//	predicted = this->prev[block_id].SubVector(h).SubVector(h2);
+						}
+
 						EstimateAtLevel<&(SafeSAD_4x4)>(at_edge, prev_Y, cur, prev, predicted, best4); // FIX thresholds
 					}
 
@@ -411,4 +424,11 @@ void MotionEstimator::ARPS(const uint8_t* cur_Y,
 			mvectors[block_id] = best16;
 		}
 	}
+
+	if (!this->prev) {
+		prev = new MV[num_blocks_hor*num_blocks_vert];
+	}
+
+	std::copy(mvectors, mvectors + (num_blocks_hor*num_blocks_vert), prev);
+
 }

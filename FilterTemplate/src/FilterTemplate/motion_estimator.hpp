@@ -86,6 +86,7 @@ private:
 	int zmp_threshold, first_threshold, second_threshold;
 	int img_size;
 	int ** thresholds;
+	MV *prev;
 
 	// ME methods
 	void FullSearch(const uint8_t* cur_Y,
